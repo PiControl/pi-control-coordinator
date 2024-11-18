@@ -30,7 +30,7 @@ struct ControllerRepository {
     
     // MARK: - Public Methods
     
-    public func devices() async throws -> [Row] {
+    public func controllers() async throws -> [Row] {
         //return try await Device.query(on: Serve.di.persistenceLayer.dbConnection).all()
         var devices = [Row]()
         
@@ -46,7 +46,7 @@ struct ControllerRepository {
         return nil
     }
     
-    public func create(_ device: Controller) async throws {
+    public func create(_ controller: Controller) async throws {
         //try await device.save(on: Serve.di.persistenceLayer.dbConnection)
     }
     

@@ -21,7 +21,7 @@
 import ArgumentParser
 
 @main
-struct PiControlCoordinator: ParsableCommand {
+struct PiControlCoordinator: AsyncParsableCommand {
     
     // MARK: - ParsableCommand
     

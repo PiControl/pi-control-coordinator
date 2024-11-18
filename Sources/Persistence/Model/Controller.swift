@@ -1,5 +1,5 @@
 //
-//  Device.swift
+//  Controller.swift
 //  pi-control-coordinator
 //
 //  Created by Thomas Bonk on 10.11.24.
@@ -26,11 +26,11 @@ public class Controller: Entity {
     // MARK: - Static Methods
     
     public static func table() -> Table {
-        return Table("devices")
+        return Table("controllers")
     }
     
     public static func id() -> SQLite.Expression<UUID> { SQLite.Expression<UUID>("id") }
-    public static func deviceId() -> SQLite.Expression<String> { SQLite.Expression<String>("deviceId") }
+    public static func controllerId() -> SQLite.Expression<String> { SQLite.Expression<String>("controllerId") }
     public static func isOwner() -> SQLite.Expression<Bool> { SQLite.Expression<Bool>("isOwner") }
     public static func passwordHash() -> SQLite.Expression<String?> { SQLite.Expression<String?>("passwordHash") }
     public static func salt() -> SQLite.Expression<String?> { SQLite.Expression<String?>("salt") }

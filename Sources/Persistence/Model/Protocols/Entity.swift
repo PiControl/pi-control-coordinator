@@ -24,6 +24,6 @@ protocol Entity {
     // Empty by design
 }
 
-func withEntity<T: Entity>(_ model: T.Type, _ lambda: (T.Type) -> Void) {
-    lambda(T.self)
+func withEntity<T: Entity>(_ model: T.Type, _ lambda: (T.Type) async throws -> Void) async throws {
+    try await lambda(T.self)
 }

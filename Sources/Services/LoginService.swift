@@ -20,6 +20,8 @@
 
 import Foundation
 import Hummingbird
+import PiControlRestMessages
+import SQLite
 
 fileprivate enum AuthorizationScheme: Codable {
     
@@ -63,17 +65,141 @@ struct LoginService {
     // MARK: - Private Methods
     
     private func onLogin(request: Request, context: any RequestContext) async throws -> Response {
-        let owner = try await DeviceRepository.shared.owner()
+        guard
+            try await !Serve.globals.controllerRepository.controllers().isEmpty
+        else {
+            return try await handleOwnerRegistration(request: request, context: context)
+        }
         
-        guard let authorizationScheme = self.authorizationScheme(of: request) else {
-            return Response(
-                status: .ok,
-                headers: .init(dictionaryLiteral: (.contentType, "application/json")),
-                body: ResponseBody(byteBuffer: ByteBufferAllocator().buffer(capacity: 0))
+        if case let .basic(usrPwd) = authorizationScheme(of: request) {
+            return try await handleLogin(basic: usrPwd)
+        }
+        if case let .bearer(token) = authorizationScheme(of: request) {
+            return try await handleLogin(bearer: token)
+        }
+        
+        return Response(status: .unauthorized)
+    }
+    
+    private func handleLogin(basic: String? = nil, bearer: String? = nil) async throws -> Response {
+        if basic == nil && bearer == nil {
+            return try requestCredentials()
+        }
+        
+        guard let auth = try await auth(from: basic, or: bearer),
+              let deviceId = auth.deviceId
+        else {
+            return try requestCredentials("Device ID or password is invalid")
+        }
+        
+        // Load the device from the DB
+        var controller: Row?
+        try await withEntity(Controller.self) { d in
+            controller = try await Serve.globals.persistenceFirst(
+                d.table()
+                    .select(d.controllerId(), d.isOwner(), d.passwordHash(), d.salt())
+                    .filter(d.controllerId() == deviceId)
             )
         }
         
-        return Response(status: .notFound)
+        guard let controller else {
+            return try requestCredentials("Device ID or password is invalid")
+        }
+        
+        if let pwd = auth.password {
+            if !(try PasswordHasher.verify(
+                password: pwd, hash: controller.get(Controller.passwordHash())!,
+                salt: controller.get(Controller.salt())!)) {
+                
+                return try requestCredentials("Device ID or password is invalid")
+            }
+        }
+        
+        let token = try await TokenUtils.createToken(for: deviceId, owner: controller.get(Controller.isOwner()))
+        
+        return Response(
+            status: .ok,
+            headers: HTTPFields(dictionaryLiteral: (.contentType, "application/json")),
+            body: ResponseBody(
+                byteBuffer: try LoginResponse(
+                    result: .success,
+                    message: "Owner created",
+                    token: token,
+                    mqttCredentials: await getMqttCredentials()
+                ).encoded().byteBuffer
+            )
+        )
+    }
+    
+    private func handleOwnerRegistration(request: Request, context: any RequestContext) async throws -> Response {
+        guard
+            case let .basic(value) = authorizationScheme(of: request),
+            let (deviceId, password) = decodeDeviceIdAndPassword(value)
+        else {
+            return try requestCredentials()
+        }
+        
+        guard
+            let (hashedPassword, salt) = PasswordHasher.createHash(for: password)
+        else {
+            return try requestCredentials()
+        }
+        
+        try await withEntity(Controller.self) { d in
+            try await Serve.globals.persistenceRun(
+                d.table().insert(
+                    d.id() <- UUID(),
+                    d.controllerId() <- deviceId,
+                    d.isOwner() <- true,
+                    d.passwordHash() <- hashedPassword,
+                    d.salt() <- salt
+                )
+            )
+        }
+        
+        // - create JWT token
+        let token = try await TokenUtils.createToken(for: deviceId, owner: true)
+        
+        return Response(
+            status: .ok,
+            headers: HTTPFields(dictionaryLiteral: (.contentType, "application/json")),
+            body: ResponseBody(
+                byteBuffer: try LoginResponse(
+                    result: .success,
+                    message: "Owner created",
+                    token: token,
+                    mqttCredentials: await getMqttCredentials()
+                ).encoded().byteBuffer
+            )
+        )
+    }
+    
+    private func getMqttCredentials() async -> String {
+        let mqttUsername = await Serve.globals.properties.security.mqtt.username
+        let mqttPassword = await Serve.globals.properties.security.mqtt.password
+        let mqttCredentials: String = {
+            let credentials = "\(mqttUsername):\(mqttPassword)"
+            let data = credentials.data(using: .utf8)
+            
+            return data!.base64EncodedString()
+        }()
+        
+        return mqttCredentials
+    }
+    
+    private func auth(from basic: String?, or bearer: String?) async throws -> (deviceId: String?, password: String?)? {
+        if let bearer {
+            let tokenPayload = try await TokenUtils.decodeToken(bearer)
+            
+            return (deviceId: tokenPayload.sub.value, password: nil)
+        }
+        if let basic {
+            let (deviceId, password) = decodeDeviceIdAndPassword(basic)!
+            
+            return (deviceId: deviceId, password: password)
+        }
+        
+        return nil
     }
     
     private func authorizationScheme(of request: Request) -> AuthorizationScheme? {
@@ -88,4 +214,35 @@ struct LoginService {
         
         return AuthorizationScheme(String(values[0]), value: String(values[1]))
     }
+    
+    private func decodeDeviceIdAndPassword(_ value: String) -> (deviceId: String, password: String)? {
+        guard
+            let data = Data(base64Encoded: value),
+            let decodedString = String(data: data, encoding: .utf8)
+        else {
+            return nil
+        }
+        
+        let components = decodedString.split(separator: ":", maxSplits: 1)
+        guard components.count == 2 else { return nil }
+        
+        return (deviceId: String(components[0]), password: String(components[1]))
+    }
+}
+
+extension LoginService {
+    
+    private func requestCredentials(_ msg: String = "Send credentials") throws -> Response {
+        return Response(
+            status: .ok,
+            headers: HTTPFields(dictionaryLiteral: (.contentType, "application/json")),
+            body: ResponseBody(
+                byteBuffer: try LoginResponse(
+                    result: .sendCredentials,
+                    message: "Send credentials"
+                ).encoded().byteBuffer
+            )
+        )
+    }
+    
 }

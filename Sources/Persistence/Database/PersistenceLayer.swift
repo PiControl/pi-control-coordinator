@@ -18,63 +18,52 @@
 //  limitations under the License.
 //
 
-import FluentKit
-import FluentSQLiteDriver
 import Foundation
-import Logging
+import SQLite
 
-struct PersistenceLayer {    
+struct PersistenceLayer {
     
     // MARK: - Public Properties
     
-    public  let dbConnection: any Database
+    public private(set) var db: Connection
     
     
     // MARK: - Private Properties
     
-    private let logger: Logger = Logger(label: "PersistanceLayer")
-    private let threadCount = 100
-    private let maxConnections = 10
     private let state: String
-    private let eventLoopGroup: MultiThreadedEventLoopGroup
-    private let databases: Databases
-    private let migrator: Migrator
 
     
     // MARK: - Initialization
     
-    private init(state directory: String) throws {
-        self.state = directory
+    public init(_ state: String, migrations: Migrations) async throws {
+        self.state = state
+        self.db = try Connection(state.appendingPathComponent("pi-control-coordinator.sqlite"))
         
-        self.eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: threadCount)
-        
-        let configuration = SQLiteConfiguration(
-            storage: .file(path: self.state.appendingPathComponent("pi-control-coordinator.sqlite"))
-        )
-        
-        let db = DatabaseConfigurationFactory.sqlite(
-            configuration,
-            maxConnectionsPerEventLoop: maxConnections
-        )
-        
-        self.databases = Databases(threadPool: NIOThreadPool(numberOfThreads: threadCount), on: self.eventLoopGroup)
-        self.databases.use(db, as: .sqlite)
-        
-        // Add migrations and models as needed
-        let migrations = Migrations()
-        migrations.add(DeviceModelV1())
-        
-        self.migrator = Migrator(
-            databases: self.databases,
-            migrations: migrations,
-            logger: self.logger,
-            on: self.eventLoopGroup.next()
-        )
-        
-        // Run migrations
-        try migrator.setupIfNeeded().wait()
-        
-        // Access the database for queries
-        dbConnection = databases.database(.sqlite, logger: self.logger, on: eventLoopGroup.next())!
+        for m in migrations.migrations() {
+            try! await m.migrate(db)
+        }
     }
 }
+
+extension Serve.Globals {
+    // MARK: - Persistence Methods
+    
+    @discardableResult
+    public func persistenceRun(_ query: Insert) throws -> Int64 {
+        return try self.persistenceLayer.db.run(query)
+    }
+    
+    public func persistenceFirst(_ query: any QueryType) throws -> Row? {
+        return try self.persistenceLayer.db.pluck(query)
+    }
+    
+    public func persistenceSelect(_ query: any QueryType) throws -> [Row] {
+        return Array(try self.persistenceLayer.db.prepare(query))
+    }
+    
+}
+
+extension Row: @unchecked @retroactive Sendable {
+    
+}
+

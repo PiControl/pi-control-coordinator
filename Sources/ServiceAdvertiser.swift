@@ -18,36 +18,49 @@
 //  limitations under the License.
 //
 
+import Logging
 import NetService
 
 class ServiceAdvertiser {
+    
+    // MARK: - Private Properties
+    
+    private var logger: Logger = Logger(label: "ServiceAdvertiser")
     private var netService: NetService?
+    private var mqttService: NetService?
 
     init(serviceName: String, port: Int) {
         // Set up NetService to advertise an HTTP service over TCP
         netService = NetService(domain: "local.", type: "_pictrl._tcp.", name: serviceName, port: Int32(port))
         netService?.delegate = self
+        
+        mqttService = NetService(domain: "local.", type: "_mqtt._tcp.", name: serviceName + "-mqtt", port: Int32(1883))
+        mqttService?.delegate = self
     }
 
     func start() {
+        logger.info("Starting service advertising...")
         netService?.publish()
+        mqttService?.publish()
     }
 
     func stop() {
         netService?.stop()
+        mqttService?.stop()
+        logger.info("Stopped service advertising...")
     }
 }
 
 extension ServiceAdvertiser: NetServiceDelegate {
     func netServiceDidPublish(_ sender: NetService) {
-        print("HTTP service published: \(sender)")
+        logger.info("Service published: \(sender.name)")
     }
 
     private func netService(_ sender: NetService, didNotPublish errorDict: [String : Int]) {
-        print("Failed to publish HTTP service: \(errorDict)")
+        logger.info("Failed to publish service: \(errorDict)")
     }
 
     func netServiceDidStop(_ sender: NetService) {
-        print("HTTP service stopped: \(sender)")
+        logger.info("Service stopped: \(sender.name)")
     }
 }

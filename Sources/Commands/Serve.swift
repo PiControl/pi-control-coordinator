@@ -21,8 +21,43 @@
 import ArgumentParser
 import Foundation
 import Hummingbird
+import MQTTNIO
+import SQLite
 
-struct Serve: ParsableCommand {
+struct Serve: AsyncParsableCommand {
+    
+    // MARK: - Dependency Injector
+    
+    actor Globals {
+        
+        // MARK: - Properties
+        
+        public private(set) var properties: Properties!
+        public private(set) var persistenceLayer: PersistenceLayer!
+        public private(set) var controllerRepository: ControllerRepository!
+        public private(set) var mqttClient: MQTTClient!
+        
+        
+        // MARK: - Setters
+        
+        public func setProperties(_ properties: Properties) {
+            self.properties = properties
+        }
+        
+        public func setPersistenceLayer(_ persistenceLayer: PersistenceLayer) {
+            self.persistenceLayer = persistenceLayer
+        }
+        
+        public func setControllerRepository(_ controllerRepository: ControllerRepository) {
+            self.controllerRepository = controllerRepository
+        }
+        
+        public func setMqttClient(_ mqttClient: MQTTClient) {
+            self.mqttClient = mqttClient
+        }
+        
+    }
+    
     
     // MARK: - Static Properties
     
@@ -31,11 +66,16 @@ struct Serve: ParsableCommand {
         abstract: "Start the Pi Control Coordinator web server."
     )
     
+    public static let globals = Globals()
+    
     
     // MARK: - Options
     
     @Option(name: .shortAndLong, help: "The directory where the state shall be stored.")
     var state: String = "/var/lib/pi-control"
+    
+    @Option(name: .shortAndLong, help: "The configuration file path.")
+    var config: String = "/etc/pi-control-coordinator.yaml"
     
     @Option(name: .shortAndLong, help: "The hostname under which the server is serving.")
     var hostname: String = ProcessInfo.processInfo.hostName
@@ -49,9 +89,37 @@ struct Serve: ParsableCommand {
     
     // MARK: - Entry Point
     
-    func run() throws {
-        // Configure the DB instance
-        PersistanceLayer.configure(state: self.state)
+    func run() async throws {        
+        do {
+            await Serve.globals.setProperties(try Properties(from: self.config))
+            await Serve.globals.setPersistenceLayer(try PersistenceLayer(self.state, migrations: ModelMigrations()))
+            await Serve.globals.setControllerRepository(ControllerRepository())
+            await Serve.globals.setMqttClient(MQTTClient(
+                configuration: .init(
+                    target: .host("localhost", port: 1883),
+                    clientId: self.serviceName,
+                    credentials: .init(
+                        username: Serve.globals.properties.security.mqtt.username,
+                        password: Serve.globals.properties.security.mqtt.password)))
+            )
+            try await Serve.globals.mqttClient.connect()
+            
+            await Serve.globals.mqttClient.whenMessage(
+                forTopic: "/coordinator/register-accessory",
+                RegisterAccessoryHandler.handle)
+            await Serve.globals.mqttClient.whenMessage(
+                forTopic: "/coordinator/register-device",
+                RegisterDeviceHandler.handle)
+            await Serve.globals.mqttClient.whenMessage(
+                forTopic: "/coordinator/accessories",
+                AccessoriesHandler.handle)
+            await Serve.globals.mqttClient.whenMessage(
+                forTopic: "/coordinator/devices",
+                DevicesHandler.handle)
+            try await Serve.globals.mqttClient.subscribe(to: "/coordinator/#", qos: .exactlyOnce)
+        } catch {
+            fatalError(error.localizedDescription)
+        }
         
         // create router and add services
         let router = Router()
@@ -71,18 +139,11 @@ struct Serve: ParsableCommand {
         let advertiser = ServiceAdvertiser(serviceName: self.serviceName, port: self.port)
         advertiser.start()
         
-        // run hummingbird application
-        let semaphore = DispatchSemaphore(value: 0)
-        Task {
-            do {
-                try await app.runService()
-            } catch {
-                print("Failed to start server: \(error)")
-            }
-            semaphore.signal()
+        do {
+            try await app.runService()
+        } catch {
+            print("Failed to start server: \(error)")
         }
-        // Wait for the server task to complete
-        semaphore.wait()
         
         advertiser.stop()
     }

@@ -1,5 +1,5 @@
 //
-//  ModelMigration.swift
+//  ModelMigrations.swift
 //  pi-control-coordinator
 //
 //  Created by Thomas Bonk on 14.11.24.
@@ -19,3 +19,13 @@
 //
 
 import Foundation
+
+struct ModelMigrations: Migrations {
+    
+    func migrations() -> [any Migration] {
+        return [
+            ModelV1()
+        ]
+    }
+    
+}
