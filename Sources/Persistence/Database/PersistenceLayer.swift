@@ -23,30 +23,7 @@ import FluentSQLiteDriver
 import Foundation
 import Logging
 
-struct PersistanceLayer {
-    
-    // MARK: - Static Properties
-    
-    nonisolated(unsafe) private static var stateDirectory: String?
-    @MainActor
-    private static var instance: PersistanceLayer?
-    
-    @MainActor
-    public static func shared() throws -> PersistanceLayer {
-        guard let instance else {
-            instance = try PersistanceLayer(state: stateDirectory!)
-            return instance!
-        }
-        return instance
-    }
-    
-    
-    // MARK: - Static Methods
-    
-    public static func configure(state directory: String) {
-        PersistanceLayer.stateDirectory = directory
-    }
-    
+struct PersistenceLayer {    
     
     // MARK: - Public Properties
     

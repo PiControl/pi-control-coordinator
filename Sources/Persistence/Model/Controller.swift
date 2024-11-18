@@ -18,37 +18,21 @@
 //  limitations under the License.
 //
 
-import FluentKit
 import Foundation
+import SQLite
 
-public final class Device: Model, @unchecked Sendable {
+public class Controller: Entity {
     
-    // MARK: - Static Properties
+    // MARK: - Static Methods
     
-    public static let schema = "devices"
-    
-    
-    // MARK: - Properties
-    
-    @ID(key: .id)
-    public var id: UUID?
-    
-    @Field(key: "deviceId")
-    public var deviceId: String
-    
-    @Field(key: "isOwner")
-    public var isOwner: Bool
-    
-    @Field(key: "passwordHash")
-    public var passwordHash: String?
-    
-
-    // MARK: - Initialization
-    
-    public init() {}
-    
-    public init(id: UUID? = nil, deviceId: String) {
-        self.id = id
-        self.deviceId = deviceId
+    public static func table() -> Table {
+        return Table("devices")
     }
+    
+    public static func id() -> SQLite.Expression<UUID> { SQLite.Expression<UUID>("id") }
+    public static func deviceId() -> SQLite.Expression<String> { SQLite.Expression<String>("deviceId") }
+    public static func isOwner() -> SQLite.Expression<Bool> { SQLite.Expression<Bool>("isOwner") }
+    public static func passwordHash() -> SQLite.Expression<String?> { SQLite.Expression<String?>("passwordHash") }
+    public static func salt() -> SQLite.Expression<String?> { SQLite.Expression<String?>("salt") }
+    
 }
