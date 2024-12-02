@@ -95,7 +95,7 @@ struct LoginService {
         // Load the device from the DB
         var controller: Row?
         try await withEntity(Controller.self) { d in
-            controller = try await Serve.globals.persistenceFirst(
+            controller = try await Serve.globals.pluck(
                 d.table()
                     .select(d.controllerId(), d.isOwner(), d.passwordHash(), d.salt())
                     .filter(d.controllerId() == deviceId)
@@ -145,17 +145,12 @@ struct LoginService {
             return try requestCredentials()
         }
         
-        try await withEntity(Controller.self) { d in
-            try await Serve.globals.persistenceRun(
-                d.table().insert(
-                    d.id() <- UUID(),
-                    d.controllerId() <- deviceId,
-                    d.isOwner() <- true,
-                    d.passwordHash() <- hashedPassword,
-                    d.salt() <- salt
-                )
-            )
-        }
+        try await Serve.globals.controllerRepository.create(
+            deviceId: deviceId,
+            isOwner: true,
+            passwordHash: hashedPassword,
+            salt: salt
+        )
         
         // - create JWT token
         let token = try await TokenUtils.createToken(for: deviceId, owner: true)

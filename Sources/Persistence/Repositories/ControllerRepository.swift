@@ -32,22 +32,37 @@ struct ControllerRepository {
     
     public func controllers() async throws -> [Row] {
         //return try await Device.query(on: Serve.di.persistenceLayer.dbConnection).all()
-        var devices = [Row]()
+        var controlers = [Row]()
         
-        try await withEntity(Controller.self) { d in
-            devices.append(contentsOf: try await Serve.globals.persistenceSelect(d.table()))
+        try await withEntity(Controller.self) { c in
+            controlers.append(contentsOf: try await Serve.globals.prepare(c.table()))
         }
         
-        return devices
+        return controlers
     }
     
-    public func owner() async throws -> Controller? {
-        //return try await Device.query(on: Serve.di.persistenceLayer.dbConnection).filter(\.$isOwner == true).first()
-        return nil
+    public func owner() async throws -> Row? {
+        var controller: Row? = nil
+        
+        try await withEntity(Controller.self) { c in
+            controller = try await Serve.globals.pluck(c.table().filter(c.isOwner() == true))
+        }
+
+        return controller
     }
     
-    public func create(_ controller: Controller) async throws {
-        //try await device.save(on: Serve.di.persistenceLayer.dbConnection)
+    public func create(deviceId: String, isOwner: Bool, passwordHash: String, salt: String) async throws {
+        try await withEntity(Controller.self) { d in
+            try await Serve.globals.run(
+                d.table().insert(
+                    d.id() <- UUID(),
+                    d.controllerId() <- deviceId,
+                    d.isOwner() <- true,
+                    d.passwordHash() <- passwordHash,
+                    d.salt() <- salt
+                )
+            )
+        }
     }
     
 }

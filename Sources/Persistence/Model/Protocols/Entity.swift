@@ -27,3 +27,18 @@ protocol Entity {
 func withEntity<T: Entity>(_ model: T.Type, _ lambda: (T.Type) async throws -> Void) async throws {
     try await lambda(T.self)
 }
+
+@discardableResult
+func withEntity<T: Entity>(_ model: T.Type, _ lambda: (T.Type) async throws -> Int64) async throws -> Int64 {
+    return try await lambda(T.self)
+}
+
+@discardableResult
+func withEntity<T: Entity, R>(_ model: T.Type, _ lambda: (T.Type) async throws -> R?) async throws -> R? {
+    return try await lambda(T.self)
+}
+
+@discardableResult
+func withEntity<T: Entity, R>(_ model: T.Type, _ lambda: (T.Type) async throws -> [R]) async throws -> [R] {
+    return try await lambda(T.self)
+}

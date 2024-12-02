@@ -49,18 +49,17 @@ extension Serve.Globals {
     // MARK: - Persistence Methods
     
     @discardableResult
-    public func persistenceRun(_ query: Insert) throws -> Int64 {
+    public func run(_ query: Insert) throws -> Int64 {
         return try self.persistenceLayer.db.run(query)
     }
     
-    public func persistenceFirst(_ query: any QueryType) throws -> Row? {
+    public func pluck(_ query: any QueryType) throws -> Row? {
         return try self.persistenceLayer.db.pluck(query)
     }
     
-    public func persistenceSelect(_ query: any QueryType) throws -> [Row] {
+    public func prepare(_ query: QueryType) throws -> [Row] {
         return Array(try self.persistenceLayer.db.prepare(query))
     }
-    
 }
 
 extension Row: @unchecked @retroactive Sendable {

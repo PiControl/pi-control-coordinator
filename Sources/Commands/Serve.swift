@@ -34,7 +34,9 @@ struct Serve: AsyncParsableCommand {
         
         public private(set) var properties: Properties!
         public private(set) var persistenceLayer: PersistenceLayer!
+        public private(set) var accessoryRepository: AccessoryRepository!
         public private(set) var controllerRepository: ControllerRepository!
+        public private(set) var devicesRepository: DevicesRepository!
         public private(set) var mqttClient: MQTTClient!
         
         
@@ -48,8 +50,15 @@ struct Serve: AsyncParsableCommand {
             self.persistenceLayer = persistenceLayer
         }
         
+        public func setAccessoryRepository(_ accessoryRepository: AccessoryRepository) {
+            self.accessoryRepository = accessoryRepository
+        }
         public func setControllerRepository(_ controllerRepository: ControllerRepository) {
             self.controllerRepository = controllerRepository
+        }
+        
+        public func setDevicesRepository(_ devicesRepository: DevicesRepository) {
+            self.devicesRepository = devicesRepository
         }
         
         public func setMqttClient(_ mqttClient: MQTTClient) {
@@ -75,7 +84,7 @@ struct Serve: AsyncParsableCommand {
     var state: String = "/var/lib/pi-control"
     
     @Option(name: .shortAndLong, help: "The configuration file path.")
-    var config: String = "/etc/pi-control-coordinator.yaml"
+    var config: String = "/etc/pi-control/pi-control-coordinator.yaml"
     
     @Option(name: .shortAndLong, help: "The hostname under which the server is serving.")
     var hostname: String = ProcessInfo.processInfo.hostName
@@ -93,7 +102,9 @@ struct Serve: AsyncParsableCommand {
         do {
             await Serve.globals.setProperties(try Properties(from: self.config))
             await Serve.globals.setPersistenceLayer(try PersistenceLayer(self.state, migrations: ModelMigrations()))
+            await Serve.globals.setAccessoryRepository(AccessoryRepository())
             await Serve.globals.setControllerRepository(ControllerRepository())
+            await Serve.globals.setDevicesRepository(DevicesRepository())
             await Serve.globals.setMqttClient(MQTTClient(
                 configuration: .init(
                     target: .host("localhost", port: 1883),
@@ -105,18 +116,18 @@ struct Serve: AsyncParsableCommand {
             try await Serve.globals.mqttClient.connect()
             
             await Serve.globals.mqttClient.whenMessage(
-                forTopic: "/coordinator/register-accessory",
+                forTopic: "coordinator/register-accessory",
                 RegisterAccessoryHandler.handle)
             await Serve.globals.mqttClient.whenMessage(
-                forTopic: "/coordinator/register-device",
+                forTopic: "coordinator/register-device",
                 RegisterDeviceHandler.handle)
             await Serve.globals.mqttClient.whenMessage(
-                forTopic: "/coordinator/accessories",
+                forTopic: "coordinator/accessories",
                 AccessoriesHandler.handle)
             await Serve.globals.mqttClient.whenMessage(
-                forTopic: "/coordinator/devices",
+                forTopic: "coordinator/devices",
                 DevicesHandler.handle)
-            try await Serve.globals.mqttClient.subscribe(to: "/coordinator/#", qos: .exactlyOnce)
+            try await Serve.globals.mqttClient.subscribe(to: "coordinator/#", qos: .exactlyOnce)
         } catch {
             fatalError(error.localizedDescription)
         }

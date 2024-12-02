@@ -22,6 +22,7 @@ import Foundation
 import Logging
 import MQTTNIO
 import PiControlMqttMessages
+import SQLite
 
 struct RegisterAccessoryHandler: MessageHandler, Sendable {
     
@@ -29,14 +30,20 @@ struct RegisterAccessoryHandler: MessageHandler, Sendable {
     
     static func handle(_ message: MQTTMessage) {
         Task {
+            logger.info("Received RegisterAccessory message from topic '\(message.topic)'")
+            logger.debug("Payload: \(message.payload.debugDescription)")
+            
             do {
                 guard let payload = message.payload.string else { return }
-                let registerAccessoryMsg =
-                    try PiControl_Coordinator_RegisterAccessory(jsonString: payload)
-                
-                
+                let msg =
+                    try RegisterAccessory(jsonString: payload)
+
+                try await Serve.globals.accessoryRepository.upsert(
+                    accessoryId: msg.id,
+                    name: msg.name,
+                    authenticationMethod: msg.authenticationMethod.rawValue)
             } catch {
-                logger.error("Error parsing RegisterAccessory message: \(error.localizedDescription)")
+                logger.error("Error while registering accessory: \(error)")
             }
         }
     }
