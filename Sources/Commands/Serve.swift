@@ -109,6 +109,7 @@ struct Serve: AsyncParsableCommand {
                 configuration: .init(
                     target: .host("localhost", port: 1883),
                     clientId: self.serviceName,
+                    clean: false,
                     credentials: .init(
                         username: Serve.globals.properties.security.mqtt.username,
                         password: Serve.globals.properties.security.mqtt.password)))
